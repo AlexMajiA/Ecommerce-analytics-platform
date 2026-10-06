@@ -1,91 +1,81 @@
-# Data Engineering Project – ELT Pipeline with dbt & Snowflake
+# Ecommerce Analytics Platform
 
 ## Overview
-This project is a Data Engineering initiative focused on building an ELT pipeline using **dbt** and **Snowflake**, based on a real e-commerce dataset (Olist, Brazil).
 
-The objective is to design a scalable and maintainable data platform oriented to analytical use cases, applying best practices in data modeling, transformation, data quality, and AI-powered enrichment.
+End-to-end **Data Engineering** project built with **Snowflake** and **dbt**, using the public [Olist Brazilian E-Commerce dataset](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce).
 
----
+The project implements an **ELT pipeline**, from raw ingestion through analytical models, with a focus on:
 
-## Current Status
-✅ Data ingestion completed in Snowflake  
-✅ Staging layer (`stg`) implemented with data cleaning and standardization  
-✅ Intermediate layer implemented for reusable transformations  
-✅ Core layer implemented (fact and dimension models)  
-✅ Analytical layer implemented with multiple business-oriented marts  
-✅ Snowflake Cortex AI integration (sentiment analysis + translation)  
-🚧 Ongoing improvements and extensions
+- Layered data architecture
+- Dimensional modeling
+- Reusable dbt transformations
+- Data quality and business-rule testing
+- Historical tracking with dbt snapshots
+- Customer and sales analytics
+- NLP enrichment with Snowflake Cortex AI
+
+The goal is not simply to transform the source data, but to build a maintainable analytical data platform where business-facing models are separated from technical transformations.
 
 ---
 
 ## Architecture
 
+<<<<<<< HEAD
 ![Data Architecture](images/architecture.png)
 
 - **Data Warehouse:** Snowflake  
 - **Transformation approach:** ELT  
 - **Transformation tool:** dbt  
+=======
+### Technology stack
+>>>>>>> d7d277b1db196b2b8239e4ddc9be7dd04ac364fc
 
-### Data Layers
+| Layer | Technology |
+|---|---|
+| Cloud data warehouse | Snowflake |
+| Transformation | dbt |
+| Ingestion | AWS S3 → Snowflake |
+| Modeling | Dimensional / Kimball-style |
+| AI / NLP | Snowflake Cortex |
+| Package management | dbt packages |
 
-- **RAW (Bronze)**  
-  Source data ingested into Snowflake from AWS S3
+### Data flow
 
-- **STAGING (`stg`) — Silver**  
-  Data cleaning, normalization and type casting
-
-- **INTERMEDIATE (`int`) — Silver**  
-  Reusable transformations to simplify downstream models.  
-  Follows the **DRY principle** (Don't Repeat Yourself): complex or expensive calculations are performed once here and inherited by all dependent marts.
-
-- **CORE — Gold**  
-  Fact and dimension models:
-  - `fct_sales`
-  - `dim_customers`
-  - `dim_products`
-  - `dim_date`
-  - `dim_seller`
-
-- **MARTS — Gold**  
-  Business-oriented analytical models
-
----
-
-## Snowflake Cortex AI Integration
-
-This project integrates **Snowflake Cortex AI** functions directly into the dbt pipeline to enrich customer reviews with NLP capabilities.
-
-### Problem
-The Olist dataset contains **99,224 customer reviews written in Portuguese**. Analyzing sentiment required both translation and scoring within the pipeline.
-
-### Solution
-Two Cortex functions are chained in the `int_order_reviews_enriched` intermediate model:
-
-1. **`AI_TRANSLATE`** — translates each review from Portuguese to English
-2. **`SNOWFLAKE.CORTEX.SENTIMENT`** — returns a sentiment score (float between -1 and +1)
-
-NULL values are handled explicitly with `CASE WHEN` to avoid unnecessary Cortex API calls and reduce credit consumption.
-
-```sql
--- Step 1: Translate
-CASE
-    WHEN review_comment_message IS NOT NULL
-    THEN AI_TRANSLATE(review_comment_message, 'pt', 'en')
-    ELSE NULL
-END AS review_comment_message_translated
-
--- Step 2: Score sentiment on translated text
-CASE
-    WHEN review_comment_message_translated IS NOT NULL
-    THEN SNOWFLAKE.CORTEX.SENTIMENT(review_comment_message_translated)
-    ELSE NULL
-END AS review_sentiment
+```text
+Olist CSV datasets
+       │
+       ▼
+AWS S3
+       │
+       ▼
+Snowflake RAW / Bronze
+       │
+       ▼
+STAGING / Silver
+(cleaning, standardization, casting)
+       │
+       ▼
+INTERMEDIATE / Silver
+(reusable business transformations)
+       │
+       ├───────────────┐
+       ▼               ▼
+CORE / Gold        AI Enrichment
+facts & dimensions   Snowflake Cortex
+       │               │
+       └───────┬───────┘
+               ▼
+         ANALYTICS / Gold
+        business-facing marts
 ```
 
-### Key decisions
-- Materialized as **table** (not view) — Cortex is called once per `dbt run`, not on every query
-- Enrichment placed in **intermediate layer** — all sentiment marts inherit from a single source of truth
-- **Cross-region inference** required for EU accounts: `ALTER ACCOUNT SET CORTEX_ENABLED_CROSS_REGION = 'AWS_EU'`
+### Snowflake layers
+
+- **RAW / Bronze** — source data loaded into Snowflake.
+- **STAGING / Silver** — cleaning, normalization and type casting.
+- **INTERMEDIATE / Silver** — reusable transformations shared by downstream models.
+- **CORE / Gold** — fact and dimension models.
+- **ANALYTICS / Gold** — business-oriented marts for reporting and analysis.
 
 
 ## dbt Lineage (DAG)
@@ -95,103 +85,240 @@ END AS review_sentiment
 
 ---
 
-## Data Marts
+## Data Model
 
-### Sales
-- **`mart_customer_base`** — customer classification (new vs repeat) by month
-- **`mart_customer_rfm`** — RFM analysis (Recency, Frequency, Monetary)
-- **`mart_sales_daily`** — daily aggregation of sales metrics
-- **`mart_sales_by_state`** — sales performance by geographic location
-- **`mart_top_products`** — product-level sales analysis
-- **`mart_price_history`** — price evolution tracking via SCD2 snapshot
+The core analytical layer follows a dimensional modeling approach.
 
-### Sentiment
-- **`mart_review_sentiment`** — sentiment metrics per product, seller and month
-  - `avg_sentiment` — average Cortex sentiment score
-  - `avg_review_score` — average star rating (1–5)
-  - `total_orders` — distinct orders count
-  - `total_items` — total items sold
+### Dimensions
 
-- **`mart_category_sentiment`** — sentiment metrics aggregated by product category
-  - `avg_sentiment` — average sentiment per category
-  - `avg_review_score` — average star rating per category
-  - `reviews_text` — count of reviews with text comments
-  - `total_orders` — distinct orders per category
-  - `total_products` — total items sold per category
+- `dim_customers`
+- `dim_products`
+- `dim_seller`
+- `dim_date`
+
+### Fact
+
+- `fct_sales`
+
+The grain of `fct_sales` is **one row per order item** (`order_id` + `order_item_id`).
+
+Foreign-key relationships are tested against the relevant dimensions, and the fact grain is validated with a composite uniqueness test.
+
+---
+
+## Analytical Marts
+
+### Sales analytics
+
+- **`mart_sales_daily`** — daily sales KPIs.
+- **`mart_sales_by_state`** — sales performance by Brazilian state.
+- **`mart_top_products`** — product-level performance.
+- **`mart_customer_base`** — customer classification over time.
+- **`mart_customer_rfm`** — RFM segmentation using Recency, Frequency and Monetary value.
+- **`mart_price_history`** — historical product-price analysis.
+
+### Customer review analytics
+
+- **`mart_review_sentiment`** — sentiment and review metrics by product, seller and period.
+- **`mart_category_sentiment`** — sentiment analysis aggregated by product category.
+
+These marts provide business-oriented outputs rather than exposing the underlying transformation logic directly.
+
+---
+
+## Snowflake Cortex AI
+
+A dedicated intermediate model, `int_order_reviews_enriched`, enriches Olist customer reviews using Snowflake Cortex.
+
+The source contains customer reviews in Portuguese. The pipeline:
+
+1. Translates non-null review text from Portuguese to English with `AI_TRANSLATE`.
+2. Calculates sentiment with `SNOWFLAKE.CORTEX.SENTIMENT`.
+3. Publishes the enriched result as a table for downstream marts.
+
+### Why the enrichment is materialized as a table
+
+The Cortex functions are computationally and credit-sensitive operations. Materializing the enriched dataset avoids recalculating the same AI transformation every time a downstream query reads the model.
+
+The enrichment is also centralized in the **intermediate layer**, so multiple analytical marts consume one transformed source rather than repeating the AI computation.
+
+NULL review text is handled explicitly before calling Cortex functions.
+
+> For Snowflake accounts where Cortex cross-region inference is required, the account must be configured accordingly.
+
+---
+
+## Historical Tracking
+
+The project includes a dbt snapshot for order-item history:
+
+`snapshot_order_items`
+
+It uses:
+
+- **Timestamp strategy**
+- Composite business key: `order_id` + `order_item_id`
+- `ingest_timestamp` as the update timestamp
+
+This provides a simple example of preserving historical changes instead of maintaining only the latest state.
+
+---
+
+## Data Quality
+
+Data quality is handled at both the schema and business-rule level.
+
+### Schema tests
+
+- `not_null`
+- `unique`
+- `accepted_values`
+- `relationships`
+- `dbt_utils.unique_combination_of_columns`
+
+### Singular tests
+
+The project also includes SQL tests for business rules and analytical consistency, including:
+
+- Duplicate customer/month combinations
+- Negative revenue
+- Invalid order counts
+- Sales item/order consistency
+- Revenue consistency
+- Review score ranges
+- Sentiment score ranges
+- RFM score ranges
+- Top-product consistency
+
+The intention is to validate not only whether columns contain values, but whether the resulting analytical models make business sense.
+
+---
+
+## dbt Design Patterns
+
+### Separation of concerns
+
+The project separates:
+
+```text
+staging → intermediate → core → analytics
+```
+
+This keeps source cleanup, reusable transformations, dimensional modeling and business-facing logic independent.
+
+### DRY transformations
+
+Reusable calculations are performed once in intermediate models and then referenced by downstream marts.
+
+### Development safeguard
+
+A custom macro, `limit_dev`, limits selected intermediate development models when the active dbt target is `dev`. This makes local experimentation safer and reduces unnecessary warehouse processing.
 
 ---
 
 ## Project Structure
 
+```text
+.
+├── models/
+│   ├── staging/
+│   │   ├── sources.yml
+│   │   └── stg_*.sql
+│   │
+│   └── marts/
+│       └── core/
+│           ├── core.yml
+│           ├── intermediate/
+│           │   ├── intermediate.yml
+│           │   └── int_*.sql
+│           │
+│           ├── sales/
+│           │   ├── dim_*.sql
+│           │   └── fct_sales.sql
+│           │
+│           └── analytics/
+│               ├── sales/
+│               │   └── mart_*.sql
+│               └── sentiment/
+│                   ├── mart_review_sentiment.sql
+│                   └── mart_category_sentiment.sql
+│
+├── snapshots/
+│   └── snapshot_order_items.sql
+│
+├── tests/
+│   └── test_*.sql
+│
+├── macros/
+│   └── limit_dev.sql
+│
+├── packages.yml
+└── dbt_project.yml
 ```
-models/
-  staging/
-  marts/
-    core/
-      analytics/
-        sales/
-        sentiment/
-      intermediate/
-      sales/
-tests/
-macros/
-seeds/
-snapshots/
-```
 
 ---
 
-## Data Quality & Testing
+## Running the project
 
-The project includes:
+The original project was developed against a private Snowflake environment, so the warehouse and source data are not included in this repository.
 
-### Schema Tests
-- `not_null`
-- `unique`
-- `accepted_values`
+To reproduce the project, you need:
 
-### Singular Tests
-- Duplicate detection (e.g. customer + month grain)
-- Negative revenue checks
-- Invalid order counts
-- Business rule validations (e.g. customer classification)
+1. A Snowflake account.
+2. The Olist dataset loaded into a RAW layer.
+3. A dbt profile configured for Snowflake.
+4. The required dbt packages installed.
 
----
-
-## Key Design Decisions
-
-- Separation of **facts and dimensions**
-- Use of **intermediate models** following the DRY principle
-- Cortex AI enrichment materialized as **table** to minimize credit consumption
-- Explicit **NULL handling** before Cortex function calls
-- Use of **window functions** (`ROW_NUMBER`) for latest state logic
-- **LEFT JOIN** when enriching facts to preserve data completeness
-- Sentiment enrichment in **intermediate layer** to serve multiple marts from a single calculation
-
----
-
-## How to Run
-
-> ⚠️ **Note:** Source data is loaded in a private Snowflake account connected to AWS S3 and is not publicly available. To run this project you will need to set up your own Snowflake account and load the [Olist dataset](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce) into your RAW layer.
+Then:
 
 ```bash
 dbt deps
+dbt build
+```
+
+You can also run the standard workflow separately:
+
+```bash
 dbt run
 dbt test
 ```
 
-For EU Snowflake accounts using Cortex AI functions, enable cross-region inference first:
-
-```sql
-ALTER ACCOUNT SET CORTEX_ENABLED_CROSS_REGION = 'AWS_EU';
-```
+The repository does **not** contain Snowflake credentials or private connection configuration.
 
 ---
 
-## Next Steps
+## Project Status
 
-- Add dbt tests for sentiment marts
-- Extend `mart_category_sentiment` with time dimension (month/year)
-- Build Power BI dashboards consuming Gold layer marts
-- Explore incremental models for scalability
-- Add model descriptions and dbt docs
+The core pipeline and analytical models are implemented.
+
+Possible future extensions:
+
+- Power BI dashboard consuming the Gold layer
+- More incremental processing patterns
+- Additional tests for analytical marts
+- Expanded model documentation
+- Further performance optimization
+
+---
+
+## Why this project matters
+
+This project demonstrates the full path from raw operational data to business-ready analytical data:
+
+```text
+Raw data
+   ↓
+Cleaning & standardization
+   ↓
+Reusable transformations
+   ↓
+Dimensional model
+   ↓
+Business marts
+   ↓
+Data quality
+   ↓
+AI-enriched analytics
+```
+
+The emphasis is on **architecture, data modeling, maintainability and business-oriented analytical design**, rather than on isolated SQL transformations.
